@@ -1,0 +1,520 @@
+<!DOCTYPE html>
+<html lang="zh-TW">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>2048 AI Demo - Expectimax Algorithm</title>
+    <style>
+        * { margin: 0; padding: 0; box-sizing: border-box; }
+        body {
+            font-family: 'Segoe UI', Arial, sans-serif;
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            min-height: 100vh;
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            padding: 20px;
+        }
+        h1 { color: white; margin-bottom: 10px; text-shadow: 2px 2px 4px rgba(0,0,0,0.3); }
+        .subtitle { color: rgba(255,255,255,0.9); margin-bottom: 20px; font-size: 14px; }
+        .container { display: flex; gap: 30px; flex-wrap: wrap; justify-content: center; }
+        .game-section {
+            background: rgba(255,255,255,0.95);
+            border-radius: 15px;
+            padding: 25px;
+            box-shadow: 0 10px 40px rgba(0,0,0,0.3);
+        }
+        .board {
+            display: grid;
+            grid-template-columns: repeat(4, 80px);
+            grid-template-rows: repeat(4, 80px);
+            gap: 10px;
+            background: #bbada0;
+            padding: 10px;
+            border-radius: 10px;
+            margin-bottom: 20px;
+        }
+        .tile {
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            font-size: 24px;
+            font-weight: bold;
+            border-radius: 5px;
+        }
+        .tile-0 { background: rgba(238, 228, 218, 0.35); }
+        .tile-2 { background: #eee4da; color: #776e65; }
+        .tile-4 { background: #ede0c8; color: #776e65; }
+        .tile-8 { background: #f2b179; color: #f9f6f2; }
+        .tile-16 { background: #f59563; color: #f9f6f2; }
+        .tile-32 { background: #f67c5f; color: #f9f6f2; }
+        .tile-64 { background: #f65e3b; color: #f9f6f2; }
+        .tile-128 { background: #edcf72; color: #f9f6f2; font-size: 22px; }
+        .tile-256 { background: #edcc61; color: #f9f6f2; font-size: 22px; }
+        .tile-512 { background: #edc850; color: #f9f6f2; font-size: 22px; }
+        .tile-1024 { background: #edc53f; color: #f9f6f2; font-size: 18px; }
+        .tile-2048 { background: #edc22e; color: #f9f6f2; font-size: 18px; }
+        .tile-4096 { background: #3c3a32; color: #f9f6f2; font-size: 18px; }
+        .tile-8192 { background: #3c3a32; color: #f9f6f2; font-size: 18px; }
+        .strategy-select { margin-bottom: 15px; }
+        .strategy-select label { font-weight: bold; color: #776e65; margin-right: 10px; }
+        .strategy-select select {
+            padding: 10px 15px; font-size: 14px;
+            border: 2px solid #8f7a66; border-radius: 8px;
+            background: white; color: #776e65; cursor: pointer; min-width: 220px;
+        }
+        .strategy-desc {
+            background: #f5f5f5; padding: 12px; border-radius: 8px;
+            margin-bottom: 15px; font-size: 13px; color: #666;
+            border-left: 4px solid #8f7a66;
+        }
+        .controls { display: flex; gap: 10px; margin-bottom: 15px; flex-wrap: wrap; }
+        button {
+            padding: 12px 24px; font-size: 16px; font-weight: bold;
+            border: none; border-radius: 8px; cursor: pointer;
+        }
+        .btn-start { background: #8f7a66; color: white; }
+        .btn-step { background: #f59563; color: white; }
+        .btn-auto { background: #5cb85c; color: white; }
+        .btn-stop { background: #d9534f; color: white; }
+        .stats { background: #f5f5f5; padding: 15px; border-radius: 8px; font-size: 14px; }
+        .stats-row { display: flex; justify-content: space-between; margin: 5px 0; }
+        .depth-indicator { margin-top: 10px; padding: 8px; background: #e8f4e8; border-radius: 5px; font-size: 13px; }
+        .info-section {
+            background: rgba(255,255,255,0.95); border-radius: 15px;
+            padding: 25px; max-width: 400px; box-shadow: 0 10px 40px rgba(0,0,0,0.3);
+        }
+        .info-section h2 { color: #776e65; margin-bottom: 15px; font-size: 18px; }
+        .info-section h3 { color: #8f7a66; margin: 15px 0 10px 0; font-size: 15px; }
+        .info-section p { color: #666; font-size: 14px; line-height: 1.6; margin-bottom: 10px; }
+        .formula { background: #f0f0f0; padding: 10px; border-radius: 5px; font-family: monospace; font-size: 13px; margin: 10px 0; }
+        table { width: 100%; border-collapse: collapse; margin-top: 10px; font-size: 12px; }
+        th, td { padding: 6px 8px; border: 1px solid #ddd; text-align: center; }
+        th { background: #8f7a66; color: white; }
+        .highlight { background: #fff3cd !important; font-weight: bold; }
+    </style>
+</head>
+<body>
+    <h1>🎮 2048 AI Demo</h1>
+    <p class="subtitle">Expectimax Algorithm with Dynamic Depth | By Ray Chen (陳睿為)</p>
+    
+    <div class="container">
+        <div class="game-section">
+            <div class="strategy-select">
+                <label>🧠 AI 策略：</label>
+                <select id="strategySelect" onchange="changeStrategy()">
+                    <option value="dynamic">動態深度 Expectimax（推薦）</option>
+                    <option value="depth3">固定深度 3</option>
+                    <option value="depth4">固定深度 4</option>
+                    <option value="onlyBigTile">消融：只用大數值</option>
+                    <option value="onlyEmpty">消融：只用空格數</option>
+                    <option value="onlySmooth">消融：只用平滑度</option>
+                    <option value="random">隨機移動</option>
+                </select>
+            </div>
+            <div class="strategy-desc" id="strategyDesc">
+                <strong>動態深度 Expectimax：</strong>根據棋盤空格數自動調整搜尋深度（3-6層）
+            </div>
+            <div class="board" id="board"></div>
+            <div class="controls">
+                <button class="btn-start" onclick="newGame()">New Game</button>
+                <button class="btn-step" onclick="step()">Step</button>
+                <button class="btn-auto" onclick="autoPlay()">Auto Play</button>
+                <button class="btn-stop" onclick="stopAuto()">Stop</button>
+            </div>
+            <div class="stats">
+                <div class="stats-row"><span>移動次數：</span><span id="moves">0</span></div>
+                <div class="stats-row"><span>最大磚塊：</span><span id="maxTile">0</span></div>
+                <div class="stats-row"><span>計算耗時：</span><span id="calcTime">-</span></div>
+                <div class="stats-row"><span>狀態：</span><span id="status">Ready</span></div>
+                <div class="depth-indicator" id="depthIndicator">
+                    <strong>搜尋深度：</strong> <span id="depth">3</span>
+                    <span id="depthReason"></span>
+                </div>
+            </div>
+        </div>
+        
+        <div class="info-section">
+            <h2>📊 策略比較 (100局)</h2>
+            <table>
+                <tr><th>策略</th><th>≥2048</th><th>≥4096</th></tr>
+                <tr><td>固定深度 3</td><td>78%</td><td>22%</td></tr>
+                <tr class="highlight"><td>動態深度</td><td>97%</td><td>38%</td></tr>
+            </table>
+            <h3>📈 評估函數</h3>
+            <div class="formula">U(B) = Σ(v²) + 100000×空格數 + 平滑度³</div>
+            <h3>🎯 動態深度</h3>
+            <div class="formula">空格≥6→深度3 | 其他→深度4<br>(網頁版為效能限制最高4層)</div>
+        </div>
+    </div>
+
+<script>
+// ========== 完全對照 Python 程式碼 ==========
+const UP = 0, DOWN = 1, LEFT = 2, RIGHT = 3;
+const DIR_NAMES = ['上', '下', '左', '右'];
+
+let grid = [];
+let moves = 0;
+let isAutoPlaying = false;
+let currentStrategy = 'dynamic';
+
+const strategyDescriptions = {
+    'dynamic': '<strong>動態深度 Expectimax：</strong>根據棋盤空格數自動調整搜尋深度（3-6層）',
+    'depth3': '<strong>固定深度 3：</strong>搜尋深度固定為 3 層',
+    'depth4': '<strong>固定深度 4：</strong>搜尋深度固定為 4 層',
+    'onlyBigTile': '<strong>消融：只用大數值</strong>',
+    'onlyEmpty': '<strong>消融：只用空格數</strong>',
+    'onlySmooth': '<strong>消融：只用平滑度</strong>',
+    'random': '<strong>隨機移動</strong>'
+};
+
+// ===== Board 類別對應 =====
+function clone(g) {
+    return g.map(row => [...row]);
+}
+
+function transpose(g) {
+    const result = [];
+    for (let i = 0; i < 4; i++) {
+        result.push([]);
+        for (let j = 0; j < 4; j++) {
+            result[i].push(g[j][i]);
+        }
+    }
+    return result;
+}
+
+function getAvailableCells(g) {
+    const cells = [];
+    for (let i = 0; i < 4; i++) {
+        for (let j = 0; j < 4; j++) {
+            if (g[i][j] === 0) cells.push([i, j]);
+        }
+    }
+    return cells;
+}
+
+function addRandomTile(g) {
+    const available = getAvailableCells(g);
+    if (available.length > 0) {
+        const [r, c] = available[Math.floor(Math.random() * available.length)];
+        g[r][c] = Math.random() < 0.1 ? 4 : 2;
+    }
+}
+
+// 完全對照 Python 的 _move_row_left
+function moveRowLeft(row) {
+    const nonZero = row.filter(x => x !== 0);
+    const merged = [];
+    let skip = false;
+    for (let i = 0; i < nonZero.length; i++) {
+        if (skip) {
+            skip = false;
+            continue;
+        }
+        if (i + 1 < nonZero.length && nonZero[i] === nonZero[i + 1]) {
+            merged.push(nonZero[i] * 2);
+            skip = true;
+        } else {
+            merged.push(nonZero[i]);
+        }
+    }
+    while (merged.length < 4) merged.push(0);
+    return merged;
+}
+
+function moveRowRight(row) {
+    return moveRowLeft([...row].reverse()).reverse();
+}
+
+// 完全對照 Python 的 move 方法
+function move(g, direction) {
+    const oldGrid = JSON.stringify(g);
+    let newGrid;
+    
+    if (direction === LEFT) {
+        newGrid = g.map(row => moveRowLeft(row));
+    } else if (direction === RIGHT) {
+        newGrid = g.map(row => moveRowRight(row));
+    } else if (direction === UP) {
+        let temp = transpose(g);
+        temp = temp.map(row => moveRowLeft(row));
+        newGrid = transpose(temp);
+    } else if (direction === DOWN) {
+        let temp = transpose(g);
+        temp = temp.map(row => moveRowRight(row));
+        newGrid = transpose(temp);
+    }
+    
+    return { grid: newGrid, moved: JSON.stringify(newGrid) !== oldGrid };
+}
+
+function getAvailableMoves(g) {
+    const moves = [];
+    for (const dir of [UP, DOWN, LEFT, RIGHT]) {
+        const result = move(g, dir);
+        if (result.moved) moves.push(dir);
+    }
+    return moves;
+}
+
+// ===== evaluate_cell 完全對照 =====
+function evaluateCell(cell, g) {
+    const [i, j] = cell;
+    let score = 0;
+    
+    // 角落位置
+    if ((i === 0 || i === 3) && (j === 0 || j === 3)) {
+        score += 1.0;
+    } else {
+        score += 0.5;
+    }
+    
+    // 鄰近高數值 tile
+    const neighbors = [];
+    if (i > 0) neighbors.push(g[i-1][j]);
+    if (i < 3) neighbors.push(g[i+1][j]);
+    if (j > 0) neighbors.push(g[i][j-1]);
+    if (j < 3) neighbors.push(g[i][j+1]);
+    
+    if (neighbors.some(v => v >= 128)) {
+        score += 0.5;
+    }
+    
+    return score;
+}
+
+// ===== eval_board 完全對照 =====
+function evalBoard(g, nEmpty) {
+    // big_t = np.sum(np.power(grid, 2))
+    let bigT = 0;
+    for (let i = 0; i < 4; i++) {
+        for (let j = 0; j < 4; j++) {
+            bigT += g[i][j] * g[i][j];
+        }
+    }
+    
+    // smoothness 計算 - 完全對照 Python
+    const sGrid = g.map(row => row.map(v => Math.sqrt(v)));
+    let smoothness = 0;
+    
+    // 水平方向
+    smoothness -= Math.abs(sGrid[0][0] - sGrid[0][1]) + Math.abs(sGrid[0][1] - sGrid[0][2]) + Math.abs(sGrid[0][2] - sGrid[0][3]);
+    smoothness -= Math.abs(sGrid[1][0] - sGrid[1][1]) + Math.abs(sGrid[1][1] - sGrid[1][2]) + Math.abs(sGrid[1][2] - sGrid[1][3]);
+    smoothness -= Math.abs(sGrid[2][0] - sGrid[2][1]) + Math.abs(sGrid[2][1] - sGrid[2][2]) + Math.abs(sGrid[2][2] - sGrid[2][3]);
+    smoothness -= Math.abs(sGrid[3][0] - sGrid[3][1]) + Math.abs(sGrid[3][1] - sGrid[3][2]) + Math.abs(sGrid[3][2] - sGrid[3][3]);
+    
+    // 垂直方向
+    smoothness -= Math.abs(sGrid[0][0] - sGrid[1][0]) + Math.abs(sGrid[0][1] - sGrid[1][1]) + Math.abs(sGrid[0][2] - sGrid[1][2]) + Math.abs(sGrid[0][3] - sGrid[1][3]);
+    smoothness -= Math.abs(sGrid[1][0] - sGrid[2][0]) + Math.abs(sGrid[1][1] - sGrid[2][1]) + Math.abs(sGrid[1][2] - sGrid[2][2]) + Math.abs(sGrid[1][3] - sGrid[2][3]);
+    smoothness -= Math.abs(sGrid[2][0] - sGrid[3][0]) + Math.abs(sGrid[2][1] - sGrid[3][1]) + Math.abs(sGrid[2][2] - sGrid[3][2]) + Math.abs(sGrid[2][3] - sGrid[3][3]);
+    
+    const emptyW = 100000;
+    const smoothnessW = 3;
+    
+    const emptyU = nEmpty * emptyW;
+    const smoothU = Math.pow(smoothness, smoothnessW);
+    const bigTU = bigT;
+    
+    // 根據策略
+    switch (currentStrategy) {
+        case 'onlyBigTile': return bigTU;
+        case 'onlyEmpty': return emptyU;
+        case 'onlySmooth': return smoothU;
+        default: return bigTU + emptyU + smoothU;
+    }
+}
+
+// ===== 動態深度 (網頁版限制最高4層) =====
+function getMaxDepth(nEmpty) {
+    if (currentStrategy === 'depth3') return 3;
+    if (currentStrategy === 'depth4') return 4;
+    if (currentStrategy.startsWith('only')) return 3;
+    
+    // 動態深度 - 網頁版限制最高4層
+    if (nEmpty >= 6) return 3;
+    else return 4;
+}
+
+// ===== Expectimax - 完全對照 =====
+function maximize(g, depth) {
+    const availableMoves = getAvailableMoves(g);
+    const movesBoards = [];
+    
+    for (const m of availableMoves) {
+        const result = move(g, m);
+        if (result.moved) {
+            movesBoards.push([m, result.grid]);
+        }
+    }
+    
+    let maxUtility = -Infinity;
+    let bestDirection = null;
+    
+    for (const [m, b] of movesBoards) {
+        const utility = chance(b, depth + 1);
+        if (utility >= maxUtility) {
+            maxUtility = utility;
+            bestDirection = m;
+        }
+    }
+    
+    return [bestDirection, maxUtility];
+}
+
+function chance(g, depth) {
+    const emptyCells = getAvailableCells(g);
+    const nEmpty = emptyCells.length;
+    
+    // 動態深度判斷
+    const maxDepth = getMaxDepth(nEmpty);
+    
+    if (depth >= maxDepth) {
+        return evalBoard(g, nEmpty);
+    }
+    
+    // 計算權重 - 完全對照 Python
+    const cellWeights = emptyCells.map(cell => evaluateCell(cell, g));
+    const totalWeight = cellWeights.reduce((a, b) => a + b, 0);
+    
+    let utilitySum = 0;
+    
+    for (let idx = 0; idx < emptyCells.length; idx++) {
+        const cell = emptyCells[idx];
+        const weight = cellWeights[idx];
+        const probFactor = weight / totalWeight;
+        const chance2 = 0.9 * probFactor;
+        const chance4 = 0.1 * probFactor;
+        
+        for (const [tileValue, prob] of [[2, chance2], [4, chance4]]) {
+            const gClone = clone(g);
+            gClone[cell[0]][cell[1]] = tileValue;
+            const [, utility] = maximize(gClone, depth + 1);
+            utilitySum += utility * prob;
+        }
+    }
+    
+    return utilitySum;
+}
+
+function getAIMove(g) {
+    if (currentStrategy === 'random') {
+        const available = getAvailableMoves(g);
+        if (available.length === 0) return null;
+        return available[Math.floor(Math.random() * available.length)];
+    }
+    
+    const [bestMove,] = maximize(g, 0);
+    return bestMove;
+}
+
+// ===== UI =====
+function init() {
+    grid = [[0,0,0,0], [0,0,0,0], [0,0,0,0], [0,0,0,0]];
+    addRandomTile(grid);
+    addRandomTile(grid);
+    moves = 0;
+    render();
+    updateStats();
+}
+
+function render() {
+    const board = document.getElementById('board');
+    board.innerHTML = '';
+    for (let i = 0; i < 4; i++) {
+        for (let j = 0; j < 4; j++) {
+            const tile = document.createElement('div');
+            const val = grid[i][j];
+            tile.className = `tile tile-${val}`;
+            tile.textContent = val > 0 ? val : '';
+            board.appendChild(tile);
+        }
+    }
+}
+
+function updateStats() {
+    document.getElementById('moves').textContent = moves;
+    let maxTile = 0;
+    for (let i = 0; i < 4; i++) {
+        for (let j = 0; j < 4; j++) {
+            maxTile = Math.max(maxTile, grid[i][j]);
+        }
+    }
+    document.getElementById('maxTile').textContent = maxTile;
+    
+    const nEmpty = getAvailableCells(grid).length;
+    const depth = getMaxDepth(nEmpty);
+    document.getElementById('depth').textContent = depth;
+    
+    if (currentStrategy === 'dynamic') {
+        document.getElementById('depthReason').textContent = `(空格=${nEmpty})`;
+    } else {
+        document.getElementById('depthReason').textContent = '';
+    }
+}
+
+function step() {
+    const available = getAvailableMoves(grid);
+    if (available.length === 0) {
+        document.getElementById('status').textContent = 'Game Over!';
+        return false;
+    }
+    
+    const startTime = performance.now();
+    const bestMove = getAIMove(grid);
+    const elapsed = performance.now() - startTime;
+    document.getElementById('calcTime').textContent = `${elapsed.toFixed(0)} ms`;
+    
+    if (bestMove === null) {
+        document.getElementById('status').textContent = 'Game Over!';
+        return false;
+    }
+    
+    const result = move(grid, bestMove);
+    if (result.moved) {
+        grid = result.grid;
+        addRandomTile(grid);
+        moves++;
+        render();
+        updateStats();
+        document.getElementById('status').textContent = `移動：${DIR_NAMES[bestMove]}`;
+    }
+    return true;
+}
+
+function newGame() {
+    stopAuto();
+    init();
+    document.getElementById('status').textContent = 'Ready';
+    document.getElementById('calcTime').textContent = '-';
+}
+
+async function autoPlay() {
+    if (isAutoPlaying) return;
+    isAutoPlaying = true;
+    document.getElementById('status').textContent = '執行中...';
+    
+    while (isAutoPlaying) {
+        if (!step()) {
+            isAutoPlaying = false;
+            break;
+        }
+        await new Promise(r => setTimeout(r, 10));
+    }
+}
+
+function stopAuto() {
+    isAutoPlaying = false;
+    document.getElementById('status').textContent = '已停止';
+}
+
+function changeStrategy() {
+    currentStrategy = document.getElementById('strategySelect').value;
+    document.getElementById('strategyDesc').innerHTML = strategyDescriptions[currentStrategy];
+    updateStats();
+}
+
+init();
+</script>
+</body>
+</html>
